@@ -3,71 +3,538 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NetGuard AI</title>
+<title>NetGuard AI — Network Security Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-  body { background: #0a0a0a; color: #00ff88; font-family: monospace; padding: 20px; }
-  h1 { text-align: center; color: #00ff88; font-size: 1.8em; }
-  .stats { display: flex; gap: 20px; justify-content: center; margin: 20px 0; }
-  .stat-box { background: #111; border: 1px solid #00ff88; padding: 15px 25px; border-radius: 8px; text-align: center; }
-  .stat-box h2 { margin: 0; font-size: 2em; }
-  .stat-box p { margin: 5px 0 0; color: #888; font-size: 0.8em; }
-  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-  th { background: #00ff88; color: #000; padding: 10px; }
-  td { padding: 8px 10px; border-bottom: 1px solid #222; font-size: 0.85em; }
-  .suspicious { background: #2a0000; color: #ff4444; }
-  .normal { color: #00ff88; }
-  .badge-s { background: #ff4444; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; }
-  .badge-n { background: #00ff88; color: #000; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; }
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap');
+
+  :root {
+    --green: #00ff88;
+    --red: #ff3355;
+    --yellow: #ffcc00;
+    --bg: #060a0f;
+    --card: #0d1117;
+    --border: #1a2a1a;
+    --dim: #4a6a4a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--green);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline effect */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,255,136,0.015) 2px,
+      rgba(0,255,136,0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--card);
+  }
+
+  .logo {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1.4em;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--green);
+    text-shadow: 0 0 20px rgba(0,255,136,0.5);
+  }
+
+  .logo span { color: var(--red); }
+
+  .status-bar {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    font-size: 0.75em;
+    color: var(--dim);
+  }
+
+  .pulse {
+    width: 8px; height: 8px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+    box-shadow: 0 0 8px var(--green);
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  .main { padding: 20px 24px; }
+
+  /* Stats Grid */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+
+  .stat-card:hover { border-color: var(--green); }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--green);
+  }
+
+  .stat-card.danger::before { background: var(--red); }
+  .stat-card.warn::before { background: var(--yellow); }
+
+  .stat-label {
+    font-size: 0.65em;
+    color: var(--dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 2.2em;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .stat-card.danger .stat-value { color: var(--red); text-shadow: 0 0 15px rgba(255,51,85,0.4); }
+  .stat-card.warn .stat-value { color: var(--yellow); }
+
+  /* Charts Row */
+  .charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .chart-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+  }
+
+  .chart-title {
+    font-size: 0.7em;
+    color: var(--dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  canvas { max-height: 180px; }
+
+  /* Filter Bar */
+  .filter-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .filter-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    padding: 6px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75em;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+
+  .filter-btn:hover, .filter-btn.active {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(0,255,136,0.05);
+  }
+
+  .filter-btn.danger.active {
+    border-color: var(--red);
+    color: var(--red);
+    background: rgba(255,51,85,0.05);
+  }
+
+  .search-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--green);
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75em;
+    width: 200px;
+    outline: none;
+    margin-left: auto;
+  }
+
+  .search-box:focus { border-color: var(--green); }
+  .search-box::placeholder { color: var(--dim); }
+
+  /* Alert Banner */
+  .alert-banner {
+    background: rgba(255,51,85,0.1);
+    border: 1px solid var(--red);
+    border-radius: 6px;
+    padding: 10px 16px;
+    margin-bottom: 12px;
+    font-size: 0.78em;
+    color: var(--red);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: alertPulse 2s infinite;
+  }
+
+  @keyframes alertPulse {
+    0%, 100% { border-color: var(--red); }
+    50% { border-color: rgba(255,51,85,0.3); }
+  }
+
+  /* Table */
+  .table-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .table-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.7em;
+    color: var(--dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th {
+    background: rgba(0,255,136,0.05);
+    color: var(--dim);
+    font-size: 0.65em;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 10px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+
+  td {
+    padding: 9px 16px;
+    font-size: 0.78em;
+    border-bottom: 1px solid rgba(26,42,26,0.5);
+  }
+
+  tr.suspicious-row { background: rgba(255,51,85,0.04); }
+  tr.suspicious-row td { color: #ff6677; }
+  tr:hover { background: rgba(0,255,136,0.03); }
+
+  .badge {
+    padding: 2px 10px;
+    border-radius: 3px;
+    font-size: 0.7em;
+    letter-spacing: 1px;
+    font-weight: bold;
+  }
+
+  .badge-sus {
+    background: rgba(255,51,85,0.15);
+    color: var(--red);
+    border: 1px solid rgba(255,51,85,0.3);
+  }
+
+  .badge-norm {
+    background: rgba(0,255,136,0.08);
+    color: var(--green);
+    border: 1px solid rgba(0,255,136,0.2);
+  }
+
+  .size-bar {
+    display: inline-block;
+    height: 4px;
+    background: var(--green);
+    border-radius: 2px;
+    margin-left: 8px;
+    vertical-align: middle;
+    opacity: 0.4;
+  }
+
+  .size-bar.sus { background: var(--red); opacity: 0.6; }
+
+  /* Threat meter */
+  .threat-meter {
+    margin-top: 4px;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .threat-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--green), var(--yellow), var(--red));
+    border-radius: 2px;
+    transition: width 1s ease;
+  }
+
+  footer {
+    text-align: center;
+    padding: 16px;
+    font-size: 0.65em;
+    color: var(--dim);
+    border-top: 1px solid var(--border);
+    margin-top: 20px;
+  }
+
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+    .search-box { width: 100%; margin-left: 0; }
+  }
 </style>
 </head>
 <body>
-<h1>🛡️ NetGuard AI — Network Security Dashboard</h1>
 
-<div class="stats">
-  <div class="stat-box"><h2 id="total">0</h2><p>Total Packets</p></div>
-  <div class="stat-box"><h2 id="suspicious" style="color:#ff4444">0</h2><p>Suspicious</p></div>
-  <div class="stat-box"><h2 id="normal">0</h2><p>Normal</p></div>
-  <div class="stat-box"><h2 id="threat">0%</h2><p>Threat Level</p></div>
+<header>
+  <div class="logo">NET<span>GUARD</span> AI</div>
+  <div class="status-bar">
+    <div class="pulse"></div>
+    <span>LIVE MONITORING</span>
+    <span id="timestamp"></span>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">Total Packets</div>
+      <div class="stat-value" id="totalVal">0</div>
+      <div class="threat-meter"><div class="threat-fill" style="width:100%"></div></div>
+    </div>
+    <div class="stat-card danger">
+      <div class="stat-label">Suspicious</div>
+      <div class="stat-value" id="susVal">0</div>
+      <div class="threat-meter"><div class="threat-fill" id="susFill" style="width:0%"></div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Normal</div>
+      <div class="stat-value" id="normVal">0</div>
+    </div>
+    <div class="stat-card warn">
+      <div class="stat-label">Threat Level</div>
+      <div class="stat-value" id="threatVal">0%</div>
+      <div class="threat-meter"><div class="threat-fill" id="threatFill" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-title">📊 Packet Size Distribution</div>
+      <canvas id="sizeChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">🥧 Normal vs Suspicious</div>
+      <canvas id="pieChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Alert -->
+  <div class="alert-banner">
+    ⚠️ THREAT ALERT — <span id="alertMsg">Analyzing packets...</span>
+  </div>
+
+  <!-- Filter -->
+  <div class="filter-bar">
+    <button class="filter-btn active" onclick="filterPackets('all', this)">ALL</button>
+    <button class="filter-btn danger" onclick="filterPackets('SUSPICIOUS', this)">⚠ SUSPICIOUS</button>
+    <button class="filter-btn" onclick="filterPackets('NORMAL', this)">✓ NORMAL</button>
+    <input class="search-box" type="text" placeholder="Search MAC address..." oninput="searchPackets(this.value)">
+  </div>
+
+  <!-- Table -->
+  <div class="table-card">
+    <div class="table-header">
+      <span>PACKET LOG</span>
+      <span id="rowCount">0 entries</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Source MAC</th>
+          <th>Size (bytes)</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
 </div>
 
-<table>
-  <thead><tr><th>Frame</th><th>Source MAC</th><th>Size (bytes)</th><th>Status</th></tr></thead>
-  <tbody id="tableBody"></tbody>
-</table>
+<footer>
+  NetGuard AI &nbsp;|&nbsp; Built with tshark + Python + Statistical ML &nbsp;|&nbsp; by mdayyuuu-arch
+</footer>
 
 <script>
-const packets = [
-  {"frame":"1","src":"73:00:c2:be:6d:17","size":4186,"status":"SUSPICIOUS"},
-  {"frame":"2","src":"52:67:60:9e:da:8a","size":3141,"status":"NORMAL"},
-  {"frame":"3","src":"a0:1f:e5:77:b0:12","size":4981,"status":"SUSPICIOUS"},
-  {"frame":"4","src":"52:ab:ad:ef:48:a3","size":1331,"status":"NORMAL"},
-  {"frame":"5","src":"40:65:22:fb:64:fe","size":2818,"status":"NORMAL"},
-  {"frame":"10","src":"11:22:33:44:55:66","size":4200,"status":"SUSPICIOUS"},
-  {"frame":"15","src":"aa:bb:cc:dd:ee:ff","size":1200,"status":"NORMAL"},
-  {"frame":"20","src":"12:34:56:78:90:ab","size":3900,"status":"SUSPICIOUS"},
-  {"frame":"25","src":"fe:dc:ba:98:76:54","size":800,"status":"NORMAL"},
-  {"frame":"30","src":"a1:b2:c3:d4:e5:f6","size":4500,"status":"SUSPICIOUS"}
-];
+const packets = [{"frame":"1","src":"73:00:c2:be:6d:17","size":4186,"status":"SUSPICIOUS"},{"frame":"2","src":"52:67:60:9e:da:8a","size":3141,"status":"NORMAL"},{"frame":"3","src":"a0:1f:e5:77:b0:12","size":4981,"status":"SUSPICIOUS"},{"frame":"4","src":"52:ab:ad:ef:48:a3","size":1331,"status":"NORMAL"},{"frame":"5","src":"40:65:22:fb:64:fe","size":2818,"status":"NORMAL"},{"frame":"6","src":"11:b2:6e:57:8a:a7","size":4224,"status":"SUSPICIOUS"},{"frame":"7","src":"8a:fc:f9:59:25:73","size":75,"status":"NORMAL"},{"frame":"8","src":"3e:5a:9b:51:f7:25","size":1250,"status":"NORMAL"},{"frame":"9","src":"4e:df:42:44:35:a9","size":704,"status":"NORMAL"},{"frame":"10","src":"91:db:b5:25:3a:94","size":3081,"status":"NORMAL"},{"frame":"11","src":"f3:e2:b8:2f:93:5c","size":2929,"status":"NORMAL"},{"frame":"12","src":"5c:3d:63:0f:39:b4","size":210,"status":"NORMAL"},{"frame":"13","src":"76:c1:e4:b8:88:25","size":1176,"status":"NORMAL"},{"frame":"14","src":"37:3b:dd:d1:e7:8a","size":3862,"status":"SUSPICIOUS"},{"frame":"15","src":"00:b6:ac:2f:7c:56","size":3007,"status":"NORMAL"},{"frame":"16","src":"12:c2:c5:73:fc:f8","size":1849,"status":"NORMAL"},{"frame":"17","src":"fc:df:e4:3a:3d:a6","size":2998,"status":"NORMAL"},{"frame":"18","src":"7f:4b:15:25:73:00","size":1342,"status":"NORMAL"},{"frame":"19","src":"bf:a7:7a:67:a3:f8","size":368,"status":"NORMAL"},{"frame":"20","src":"00:91:eb:f6:61:63","size":864,"status":"NORMAL"},{"frame":"21","src":"73:00:21:a2:6b:c0","size":2953,"status":"NORMAL"},{"frame":"22","src":"7a:72:8b:c2:25:73","size":1534,"status":"NORMAL"},{"frame":"23","src":"8b:22:16:b9:7d:1a","size":4267,"status":"SUSPICIOUS"},{"frame":"24","src":"e1:0b:6d:99:25:73","size":3870,"status":"SUSPICIOUS"},{"frame":"25","src":"35:c5:13:27:23:01","size":4599,"status":"SUSPICIOUS"},{"frame":"26","src":"0f:2e:55:1a:88:78","size":4141,"status":"SUSPICIOUS"},{"frame":"27","src":"f6:3c:a1:ba:e3:4a","size":1534,"status":"NORMAL"},{"frame":"28","src":"f1:28:8f:93:be:ee","size":1753,"status":"NORMAL"},{"frame":"29","src":"dd:fe:2c:34:41:f7","size":2447,"status":"NORMAL"},{"frame":"30","src":"a1:eb:e9:70:d1:da","size":898,"status":"NORMAL"},{"frame":"31","src":"73:00:62:15:25:73","size":1342,"status":"NORMAL"},{"frame":"32","src":"b6:fa:16:71:86:e7","size":2901,"status":"NORMAL"},{"frame":"33","src":"87:b0:c0:8e:34:76","size":2297,"status":"NORMAL"},{"frame":"34","src":"11:22:25:73:00:5f","size":2720,"status":"NORMAL"},{"frame":"35","src":"de:5b:be:40:25:73","size":2557,"status":"NORMAL"},{"frame":"36","src":"de:15:07:1b:dc:62","size":3200,"status":"NORMAL"},{"frame":"37","src":"e7:f1:65:73:ec:1e","size":4477,"status":"SUSPICIOUS"},{"frame":"38","src":"f6:91:1a:61:58:11","size":1386,"status":"NORMAL"},{"frame":"39","src":"2b:27:fe:41:94:1e","size":2742,"status":"NORMAL"},{"frame":"40","src":"8a:01:04:8d:f8:fa","size":1242,"status":"NORMAL"},{"frame":"41","src":"7b:04:38:1d:20:f2","size":4712,"status":"SUSPICIOUS"},{"frame":"42","src":"25:73:00:43:a0:93","size":4856,"status":"SUSPICIOUS"},{"frame":"43","src":"ed:71:55:7e:0e:08","size":1280,"status":"NORMAL"},{"frame":"44","src":"70:c9:eb:f1:99:7f","size":1277,"status":"NORMAL"},{"frame":"45","src":"bb:e5:57:73:e6:b6","size":793,"status":"NORMAL"},{"frame":"46","src":"f1:35:29:46:87:66","size":3944,"status":"SUSPICIOUS"},{"frame":"47","src":"5b:12:3c:cb:25:73","size":1688,"status":"NORMAL"},{"frame":"48","src":"49:a0:15:58:99:c3","size":1423,"status":"NORMAL"},{"frame":"49","src":"fe:5d:c3:0b:36:aa","size":1406,"status":"NORMAL"},{"frame":"50","src":"56:47:6d:a0:34:40","size":3779,"status":"SUSPICIOUS"},{"frame":"51","src":"19:0a:80:9a:38:01","size":1812,"status":"NORMAL"},{"frame":"52","src":"73:00:60:cc:79:0e","size":2927,"status":"NORMAL"},{"frame":"53","src":"a3:75:aa:1b:a3:c4","size":3914,"status":"SUSPICIOUS"},{"frame":"54","src":"b4:0f:2b:05:59:e0","size":202,"status":"NORMAL"},{"frame":"55","src":"9b:2d:66:b2:6b:9e","size":1133,"status":"NORMAL"},{"frame":"56","src":"18:f4:c3:b7:8c:a2","size":835,"status":"NORMAL"},{"frame":"57","src":"00:6e:ff:44:68:7e","size":3963,"status":"SUSPICIOUS"},{"frame":"58","src":"74:a0:12:87:c0:7d","size":2497,"status":"NORMAL"},{"frame":"59","src":"05:a1:59:b2:82:45","size":3298,"status":"NORMAL"},{"frame":"60","src":"14:5a:5b:50:22:44","size":3758,"status":"SUSPICIOUS"},{"frame":"61","src":"20:ea:3e:7b:99:ff","size":421,"status":"NORMAL"},{"frame":"62","src":"34:22:b1:3d:75:13","size":4677,"status":"SUSPICIOUS"},{"frame":"63","src":"33:0a:88:f0:5f:4d","size":991,"status":"NORMAL"},{"frame":"64","src":"d4:0c:e7:b8:9b:74","size":3936,"status":"SUSPICIOUS"},{"frame":"65","src":"13:b9:90:fd:8c:1e","size":1646,"status":"NORMAL"},{"frame":"66","src":"3e:6a:63:43:6d:68","size":1338,"status":"NORMAL"},{"frame":"67","src":"33:6f:0a:36:64:c7","size":4143,"status":"SUSPICIOUS"},{"frame":"68","src":"73:00:81:02:2e:24","size":409,"status":"NORMAL"},{"frame":"69","src":"25:73:00:c2:0c:73","size":713,"status":"NORMAL"},{"frame":"70","src":"77:e8:06:98:43:87","size":595,"status":"NORMAL"},{"frame":"71","src":"09:2c:d3:4b:bd:3a","size":1819,"status":"NORMAL"},{"frame":"72","src":"04:fd:be:80:a2:ff","size":418,"status":"NORMAL"},{"frame":"73","src":"c8:00:ca:89:39:68","size":1706,"status":"NORMAL"},{"frame":"74","src":"8a:9e:d8:a7:f3:09","size":2233,"status":"NORMAL"},{"frame":"75","src":"f8:d8:29:0d:bd:e6","size":1562,"status":"NORMAL"},{"frame":"76","src":"58:d9:a3:ff:c5:b3","size":4532,"status":"SUSPICIOUS"},{"frame":"77","src":"b6:cc:ed:a2:4f:f5","size":1987,"status":"NORMAL"},{"frame":"78","src":"5c:87:8d:07:88:e5","size":700,"status":"NORMAL"},{"frame":"79","src":"7e:5f:3e:d7:2a:dd","size":4259,"status":"SUSPICIOUS"},{"frame":"80","src":"0a:26:7a:e8:02:a7","size":3149,"status":"NORMAL"},{"frame":"81","src":"e7:7f:02:7b:0b:46","size":886,"status":"NORMAL"},{"frame":"82","src":"b2:5e:94:7f:be:e2","size":4497,"status":"SUSPICIOUS"},{"frame":"83","src":"7e:d4:09:84:e7:17","size":3180,"status":"NORMAL"},{"frame":"84","src":"73:00:0d:df:00:2e","size":1162,"status":"NORMAL"},{"frame":"85","src":"dc:dd:a8:97:01:29","size":2544,"status":"NORMAL"},{"frame":"86","src":"25:73:00:02:61:c2","size":4417,"status":"SUSPICIOUS"},{"frame":"87","src":"b7:49:78:fd:2b:24","size":2446,"status":"NORMAL"},{"frame":"88","src":"25:73:00:25:73:00","size":2245,"status":"NORMAL"},{"frame":"89","src":"b5:66:23:40:be:c6","size":1750,"status":"NORMAL"},{"frame":"90","src":"66:70:25:73:00:ce","size":3774,"status":"SUSPICIOUS"},{"frame":"91","src":"98:94:8e:c0:c0:fc","size":2302,"status":"NORMAL"},{"frame":"92","src":"93:35:e7:38:50:76","size":1346,"status":"NORMAL"},{"frame":"93","src":"0a:68:9f:11:10:1a","size":119,"status":"NORMAL"},{"frame":"94","src":"ca:01:13:88:87:3f","size":2510,"status":"NORMAL"},{"frame":"95","src":"4a:41:19:98:59:08","size":1244,"status":"NORMAL"},{"frame":"96","src":"9c:25:73:00:64:02","size":2531,"status":"NORMAL"},{"frame":"97","src":"c5:08:87:0d:c1:53","size":1359,"status":"NORMAL"},{"frame":"98","src":"0e:25:73:00:00:4a","size":4566,"status":"SUSPICIOUS"},{"frame":"99","src":"71:42:48:90:4d:ab","size":766,"status":"NORMAL"},{"frame":"100","src":"ae:89:5d:01:19:d4","size":3371,"status":"NORMAL"}];
 
-const tbody = document.getElementById('tableBody');
-let suspiciousCount = 0;
+let currentFilter = 'all';
+let currentSearch = '';
+const maxSize = Math.max(...packets.map(p => p.size));
+const suspicious = packets.filter(p => p.status === 'SUSPICIOUS');
+const threatPct = Math.round((suspicious.length / packets.length) * 100);
 
-packets.forEach(p => {
-  const isSus = p.status === 'SUSPICIOUS';
-  if(isSus) suspiciousCount++;
-  tbody.innerHTML += `
-    <tr class="${isSus ? 'suspicious' : ''}">
-      <td>${p.frame}</td>
-      <td>${p.src}</td>
-      <td>${p.size}</td>
-      <td><span class="${isSus ? 'badge-s' : 'badge-n'}">${p.status}</span></td>
-    </tr>`;
+// Timestamp
+function updateTime() {
+  document.getElementById('timestamp').textContent = new Date().toLocaleTimeString();
+}
+setInterval(updateTime, 1000);
+updateTime();
+
+// Stats
+document.getElementById('totalVal').textContent = packets.length;
+document.getElementById('susVal').textContent = suspicious.length;
+document.getElementById('normVal').textContent = packets.length - suspicious.length;
+document.getElementById('threatVal').textContent = threatPct + '%';
+document.getElementById('susFill').style.width = threatPct + '%';
+document.getElementById('threatFill').style.width = threatPct + '%';
+document.getElementById('alertMsg').textContent = `${suspicious.length} suspicious packets detected — Threat level ${threatPct}%`;
+
+// Charts
+const sizeCtx = document.getElementById('sizeChart').getContext('2d');
+new Chart(sizeCtx, {
+  type: 'bar',
+  data: {
+    labels: packets.map(p => p.frame),
+    datasets: [{
+      label: 'Packet Size',
+      data: packets.map(p => p.size),
+      backgroundColor: packets.map(p => p.status === 'SUSPICIOUS' ? 'rgba(255,51,85,0.6)' : 'rgba(0,255,136,0.3)'),
+      borderColor: packets.map(p => p.status === 'SUSPICIOUS' ? '#ff3355' : '#00ff88'),
+      borderWidth: 1,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { display: false },
+      y: { ticks: { color: '#4a6a4a', font: { size: 10 } }, grid: { color: '#1a2a1a' } }
+    }
+  }
 });
 
-document.getElementById('total').textContent = packets.length;
-document.getElementById('suspicious').textContent = suspiciousCount;
-document.getElementById('normal').textContent = packets.length - suspiciousCount;
-document.getElementById('threat').textContent = Math.round((suspiciousCount/packets.length)*100) + '%';
+const pieCtx = document.getElementById('pieChart').getContext('2d');
+new Chart(pieCtx, {
+  type: 'doughnut',
+  data: {
+    labels: ['Normal', 'Suspicious'],
+    datasets: [{
+      data: [packets.length - suspicious.length, suspicious.length],
+      backgroundColor: ['rgba(0,255,136,0.3)', 'rgba(255,51,85,0.5)'],
+      borderColor: ['#00ff88', '#ff3355'],
+      borderWidth: 2,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { labels: { color: '#4a6a4a', font: { size: 11 } } }
+    }
+  }
+});
+
+// Table render
+function renderTable(data) {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+  data.forEach(p => {
+    const isSus = p.status === 'SUSPICIOUS';
+    const barWidth = Math.round((p.size / maxSize) * 80);
+    tbody.innerHTML += `
+      <tr class="${isSus ? 'suspicious-row' : ''}">
+        <td>${p.frame}</td>
+        <td>${p.src}</td>
+        <td>${p.size}<span class="size-bar ${isSus ? 'sus' : ''}" style="width:${barWidth}px"></span></td>
+        <td><span class="badge ${isSus ? 'badge-sus' : 'badge-norm'}">${p.status}</span></td>
+      </tr>`;
+  });
+  document.getElementById('rowCount').textContent = data.length + ' entries';
+}
+
+function filterPackets(type, btn) {
+  currentFilter = type;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function searchPackets(val) {
+  currentSearch = val.toLowerCase();
+  applyFilters();
+}
+
+function applyFilters() {
+  let data = packets;
+  if (currentFilter !== 'all') data = data.filter(p => p.status === currentFilter);
+  if (currentSearch) data = data.filter(p => p.src.toLowerCase().includes(currentSearch));
+  renderTable(data);
+}
+
+renderTable(packets);
 </script>
 </body>
 </html>
